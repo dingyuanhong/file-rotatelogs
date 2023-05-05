@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -128,6 +129,14 @@ func (rl *RotateLogs) getWriterNolock(bailOnRotateFail, useGenerationalNames boo
 
 	fi, err := os.Stat(rl.curFn)
 	sizeRotation := false
+	// load file size from opened output file,to avoid files being deleted
+	if rl.rotationSize > 0 {
+		if err != nil {
+			if rl.outFh != nil {
+				fi, err = rl.outFh.Stat()
+			}
+		}
+	}
 	if err == nil && rl.rotationSize > 0 && rl.rotationSize <= fi.Size() {
 		forceNewFile = true
 		sizeRotation = true
@@ -349,6 +358,19 @@ func (rl *RotateLogs) rotateNolock(filename string) error {
 		if rl.rotationCount >= uint(len(toUnlink)) {
 			return nil
 		}
+
+		// sort file path small to large
+		sort.Slice(toUnlink, func(x, y int) bool {
+			if len(toUnlink[x]) < len(toUnlink[y]) {
+				return true
+			} else if len(toUnlink[x]) > len(toUnlink[y]) {
+				return false
+			}
+			if strings.Compare(toUnlink[x], toUnlink[y]) < 0 {
+				return true
+			}
+			return false
+		})
 
 		toUnlink = toUnlink[:len(toUnlink)-int(rl.rotationCount)]
 	}
